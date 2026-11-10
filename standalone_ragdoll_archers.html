@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ragdoll Archers - Standalone Physics Game</title>
+  <!-- Matter.js Physics Engine -->
+  <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #090d16;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      width: 100vw;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 1280px;
+      height: 100%;
+      max-height: 720px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #1e293b;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+      background: #090d16;
+    }
+    .hud {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .hud-card {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      padding: 10px 18px;
+      border-radius: 14px;
+      pointer-events: auto;
+    }
+    .hp-bar-bg {
+      width: 180px;
+      height: 10px;
+      background: #1e293b;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 4px;
+      border: 1px solid #334155;
+    }
+    .hp-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #34d399);
+      width: 100%;
+      transition: width 0.15s ease-out;
+    }
+    .power-meter {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      padding: 10px 16px;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .power-bar-bg {
+      width: 160px;
+      height: 10px;
+      background: #1e293b;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .power-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+      width: 0%;
+    }
+    .modal {
+      position: absolute;
+      inset: 0;
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    .modal-box {
+      background: #0f172a;
+      border: 1px solid #334155;
+      padding: 28px;
+      border-radius: 18px;
+      max-width: 480px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+    }
+    .btn {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 15px;
+      margin-top: 18px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #059669; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<div id="game-container">
+  <canvas id="canvas" width="1280" height="720"></canvas>
+
+  <!-- HUD -->
+  <div class="hud">
+    <div class="hud-card">
+      <div style="font-size: 11px; color: #10b981; font-weight: bold; text-transform: uppercase;">Player Archer</div>
+      <div class="hp-bar-bg"><div id="player-hp-bar" class="hp-bar-fill"></div></div>
+      <div id="player-hp-text" style="font-size: 11px; color: #94a3b8; margin-top: 4px;">120 / 120 HP</div>
+    </div>
+
+    <div class="hud-card" style="text-align: center;">
+      <div id="wave-label" style="font-size: 12px; color: #f59e0b; font-weight: bold;">WAVE 1</div>
+      <div id="score-text" style="font-size: 24px; font-weight: 800; color: #fff;">0 PTS</div>
+    </div>
+
+    <div class="hud-card">
+      <button id="restart-btn" class="btn" style="margin-top: 0; padding: 6px 14px; font-size: 12px;">Restart</button>
+    </div>
+  </div>
+
+  <!-- Bow Power Meter -->
+  <div class="power-meter">
+    <div style="font-size: 11px; color: #94a3b8; font-weight: bold;">BOWSTRING TENSION</div>
+    <div class="power-bar-bg"><div id="power-bar" class="power-bar-fill"></div></div>
+    <div style="font-size: 10px; color: #64748b;">Hold Left Click to Draw</div>
+  </div>
+
+  <!-- Instructions Modal -->
+  <div id="intro-modal" class="modal">
+    <div class="modal-box">
+      <h2 style="font-size: 26px; color: #fff; margin-bottom: 8px;">Ragdoll Archers</h2>
+      <p style="color: #94a3b8; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
+        Aim your bow by moving your mouse. Click and hold to draw power, then release to shoot!<br><br>
+        🎯 <strong>Headshots deal critical damage</strong> and trigger slow-motion.<br>
+        🤸 <strong>Ragdoll Physics:</strong> Hit characters collapse loosely and tumble across the battlefield!
+      </p>
+      <button id="start-btn" class="btn">Start Battle</button>
+    </div>
+  </div>
+
+  <!-- Game Over Modal -->
+  <div id="game-over-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2 style="font-size: 26px; color: #ef4444; margin-bottom: 8px;">Archer Defeated</h2>
+      <p id="game-over-summary" style="color: #94a3b8; font-size: 14px; margin-bottom: 16px;"></p>
+      <button id="play-again-btn" class="btn">Play Again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * ============================================================================
+ * SECTION 1: MATTER.JS PHYSICS SETUP & COLLISION CATEGORIES
+ * ============================================================================
+ * We configure the 2D physics engine world, gravity, and collision filters so
+ * player arrows hit enemies and enemy arrows hit the player.
+ */
+const { Engine, Bodies, Body, Composite, Constraint, Events } = Matter;
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+const engine = Engine.create({ gravity: { x: 0, y: 0.95, scale: 0.001 } });
+const world = engine.world;
+
+const CAT_GROUND = 0x0001;
+const CAT_PLAYER_LIMB = 0x0002;
+const CAT_ENEMY_LIMB = 0x0004;
+const CAT_PLAYER_ARROW = 0x0008;
+const CAT_ENEMY_ARROW = 0x0010;
+
+/**
+ * ============================================================================
+ * SECTION 2: AUDIO SYNTHESIZER (WEB AUDIO API)
+ * ============================================================================
+ * Generates dynamic audio effects (bow draw tension, string twang, flesh impact,
+ * and headshot chime) directly in the browser with zero external audio files.
+ */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioCtx();
+
+function playSound(type, pitch = 1.0) {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const t = audioCtx.currentTime;
+
+  if (type === 'twang') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(440 * pitch, t);
+    osc.frequency.exponentialRampToValueAtTime(80, t + 0.15);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.18);
+  } else if (type === 'hit') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(35, t + 0.12);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.15);
+  } else if (type === 'headshot') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1046.5, t);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.45);
+  }
+}
+
+/**
+ * ============================================================================
+ * SECTION 3: RAGDOLL GENERATOR
+ * ============================================================================
+ * Builds multi-part ragdoll characters (Head, Torso, Arms, Legs) joined by
+ * revolute constraints. While alive, spring constraints keep them upright.
+ * When defeated, the stabilizers are removed, causing them to collapse and flop.
+ */
+class Ragdoll {
+  constructor(x, y, isPlayer = false, maxHealth = 100) {
+    this.id = Math.random().toString();
+    this.isPlayer = isPlayer;
+    this.maxHealth = maxHealth;
+    this.health = maxHealth;
+    this.isAlive = true;
+    this.isCollapsed = false;
+    this.aimAngle = isPlayer ? -0.3 : Math.PI + 0.3;
+    this.drawPower = 0;
+
+    const group = -Math.floor(Math.random() * 100000);
+    const category = isPlayer ? CAT_PLAYER_LIMB : CAT_ENEMY_LIMB;
+    const mask = CAT_GROUND | (isPlayer ? CAT_ENEMY_ARROW : CAT_PLAYER_ARROW);
+    const filter = { group, category, mask };
+
+    // 1. Rigid Bodies for Limbs
+    this.head = Bodies.circle(x, y - 48, 13, { collisionFilter: filter, friction: 0.6, label: 'head' });
+    this.torso = Bodies.rectangle(x, y - 20, 20, 32, { collisionFilter: filter, friction: 0.8, label: 'torso' });
+    this.pelvis = Bodies.rectangle(x, y + 2, 18, 14, { collisionFilter: filter, friction: 0.8, label: 'pelvis' });
+
+    this.leftUpperArm = Bodies.rectangle(x - 4, y - 26, 8, 22, { collisionFilter: filter, label: 'limb' });
+    this.leftForearm = Bodies.rectangle(x - 4, y - 7, 7, 20, { collisionFilter: filter, label: 'limb' });
+    this.rightUpperArm = Bodies.rectangle(x + 4, y - 26, 8, 22, { collisionFilter: filter, label: 'limb' });
+    this.rightForearm = Bodies.rectangle(x + 4, y - 7, 7, 20, { collisionFilter: filter, label: 'limb' });
+
+    this.leftThigh = Bodies.rectangle(x - 5, y + 17, 9, 24, { collisionFilter: filter, label: 'limb' });
+    this.leftShin = Bodies.rectangle(x - 5, y + 38, 8, 24, { collisionFilter: filter, label: 'limb' });
+    this.rightThigh = Bodies.rectangle(x + 5, y + 17, 9, 24, { collisionFilter: filter, label: 'limb' });
+    this.rightShin = Bodies.rectangle(x + 5, y + 38, 8, 24, { collisionFilter: filter, label: 'limb' });
+
+    // Store custom metadata
+    [this.head, this.torso, this.pelvis, this.leftUpperArm, this.leftForearm, this.rightUpperArm, this.rightForearm, this.leftThigh, this.leftShin, this.rightThigh, this.rightShin].forEach(b => {
+      b.customRagdoll = this;
+    });
+
+    // 2. Revolute Joints (Constraints)
+    const jointStiffness = 0.95;
+    const neck = Constraint.create({ bodyA: this.torso, pointA: { x: 0, y: -16 }, bodyB: this.head, pointB: { x: 0, y: 12 }, stiffness: jointStiffness });
+    const spine = Constraint.create({ bodyA: this.torso, pointA: { x: 0, y: 16 }, bodyB: this.pelvis, pointB: { x: 0, y: -7 }, stiffness: jointStiffness });
+    const lShoulder = Constraint.create({ bodyA: this.torso, pointA: { x: -9, y: -12 }, bodyB: this.leftUpperArm, pointB: { x: 0, y: -10 }, stiffness: jointStiffness });
+    const lElbow = Constraint.create({ bodyA: this.leftUpperArm, pointA: { x: 0, y: 10 }, bodyB: this.leftForearm, pointB: { x: 0, y: -9 }, stiffness: jointStiffness });
+    const rShoulder = Constraint.create({ bodyA: this.torso, pointA: { x: 9, y: -12 }, bodyB: this.rightUpperArm, pointB: { x: 0, y: -10 }, stiffness: jointStiffness });
+    const rElbow = Constraint.create({ bodyA: this.rightUpperArm, pointA: { x: 0, y: 10 }, bodyB: this.rightForearm, pointB: { x: 0, y: -9 }, stiffness: jointStiffness });
+    const lHip = Constraint.create({ bodyA: this.pelvis, pointA: { x: -6, y: 7 }, bodyB: this.leftThigh, pointB: { x: 0, y: -11 }, stiffness: jointStiffness });
+    const lKnee = Constraint.create({ bodyA: this.leftThigh, pointA: { x: 0, y: 11 }, bodyB: this.leftShin, pointB: { x: 0, y: -11 }, stiffness: jointStiffness });
+    const rHip = Constraint.create({ bodyA: this.pelvis, pointA: { x: 6, y: 7 }, bodyB: this.rightThigh, pointB: { x: 0, y: -11 }, stiffness: jointStiffness });
+    const rKnee = Constraint.create({ bodyA: this.rightThigh, pointA: { x: 0, y: 11 }, bodyB: this.rightShin, pointB: { x: 0, y: -11 }, stiffness: jointStiffness });
+
+    // 3. Upright Stabilizer Constraints
+    this.pelvisPin = Constraint.create({ pointA: { x, y: y + 2 }, bodyB: this.pelvis, pointB: { x: 0, y: 0 }, stiffness: 0.12, damping: 0.15 });
+    this.torsoPin = Constraint.create({ pointA: { x, y: y - 28 }, bodyB: this.torso, pointB: { x: 0, y: -10 }, stiffness: 0.08, damping: 0.12 });
+
+    this.composite = Composite.create({
+      bodies: [this.head, this.torso, this.pelvis, this.leftUpperArm, this.leftForearm, this.rightUpperArm, this.rightForearm, this.leftThigh, this.leftShin, this.rightThigh, this.rightShin],
+      constraints: [neck, spine, lShoulder, lElbow, rShoulder, rElbow, lHip, lKnee, rHip, rKnee, this.pelvisPin, this.torsoPin],
+    });
+
+    Composite.add(world, this.composite);
+  }
+
+  updateAim(angle, power) {
+    if (!this.isAlive || this.isCollapsed) return;
+    this.aimAngle = angle;
+    this.drawPower = power;
+    Body.setAngle(this.leftUpperArm, angle);
+    Body.setAngle(this.leftForearm, angle);
+    Body.setAngle(this.head, angle * 0.3);
+  }
+
+  collapse() {
+    if (this.isCollapsed) return;
+    this.isAlive = false;
+    this.isCollapsed = true;
+    Composite.remove(this.composite, this.pelvisPin);
+    Composite.remove(this.composite, this.torsoPin);
+    // Soften limbs so they flop in uncontrolled, funny ways
+    for (const c of this.composite.constraints) {
+      c.stiffness = 0.35;
+    }
+  }
+
+  destroy() {
+    Composite.remove(world, this.composite);
+  }
+}
+
+/**
+ * ============================================================================
+ * SECTION 4: ARROW BALLISTICS & AERODYNAMIC ORIENTATION
+ * ============================================================================
+ * Handles parabolic arrow trajectory, aerodynamic flight alignment, and sticking
+ * into body parts or platforms upon collision.
+ */
+class Arrow {
+  constructor(x, y, vx, vy, isPlayer = true) {
+    this.isPlayer = isPlayer;
+    this.isStuck = false;
+    this.spawnTime = performance.now();
+    const angle = Math.atan2(vy, vx);
+
+    this.body = Bodies.rectangle(x, y, 46, 4, {
+      angle,
+      frictionAir: 0.0015,
+      collisionFilter: {
+        category: isPlayer ? CAT_PLAYER_ARROW : CAT_ENEMY_ARROW,
+        mask: CAT_GROUND | (isPlayer ? CAT_ENEMY_LIMB : CAT_PLAYER_LIMB),
+      },
+      label: 'arrow',
+    });
+    Body.setVelocity(this.body, { x: vx, y: vy });
+    this.body.customArrow = this;
+    Composite.add(world, this.body);
+  }
+
+  updateAerodynamics() {
+    if (this.isStuck) return;
+    const { x: vx, y: vy } = this.body.velocity;
+    if (Math.hypot(vx, vy) > 1.2) {
+      Body.setAngle(this.body, Math.atan2(vy, vx));
+    }
+  }
+
+  stickInto(targetBody, contactPoint) {
+    if (this.isStuck) return;
+    this.isStuck = true;
+    this.body.collisionFilter.category = 0;
+    this.body.collisionFilter.mask = 0;
+    Body.setVelocity(this.body, { x: 0, y: 0 });
+
+    if (targetBody.isStatic) {
+      Body.setStatic(this.body, true);
+    } else {
+      // Weld arrow to target ragdoll limb
+      const constraint = Constraint.create({
+        bodyA: targetBody,
+        pointA: { x: contactPoint.x - targetBody.position.x, y: contactPoint.y - targetBody.position.y },
+        bodyB: this.body,
+        pointB: { x: 12, y: 0 },
+        stiffness: 0.95,
+      });
+      Composite.add(world, constraint);
+    }
+  }
+
+  destroy() {
+    Composite.remove(world, this.body);
+  }
+}
+
+/**
+ * ============================================================================
+ * SECTION 5: GAMEPLAY, WAVES, AND COLLISION DETECTION
+ * ============================================================================
+ */
+let player = null;
+let enemies = [];
+let arrows = [];
+let score = 0;
+let wave = 1;
+let isDrawing = false;
+let drawPower = 0;
+let aimAngle = -0.3;
+
+// Terrain Platforms
+const ground = Bodies.rectangle(640, 700, 1300, 60, { isStatic: true, collisionFilter: { category: CAT_GROUND, mask: 0xffff } });
+const playerTower = Bodies.rectangle(140, 610, 160, 140, { isStatic: true, collisionFilter: { category: CAT_GROUND, mask: 0xffff } });
+const enemyPlatform = Bodies.rectangle(1100, 620, 220, 120, { isStatic: true, collisionFilter: { category: CAT_GROUND, mask: 0xffff } });
+Composite.add(world, [ground, playerTower, enemyPlatform]);
+
+function startWave(w) {
+  wave = w;
+  enemies.forEach(e => e.destroy());
+  enemies = [];
+
+  const count = Math.min(3, w);
+  for (let i = 0; i < count; i++) {
+    const enemy = new Ragdoll(1100 - i * 90, 530, false, 80 + w * 15);
+    enemies.push(enemy);
+  }
+  document.getElementById('wave-label').textContent = `WAVE ${wave}`;
+}
+
+function initGame() {
+  score = 0;
+  arrows.forEach(a => a.destroy());
+  arrows = [];
+  if (player) player.destroy();
+  player = new Ragdoll(140, 520, true, 120);
+  startWave(1);
+  updateHUD();
+}
+
+function shoot(shooter, angle, speed, isPlayer) {
+  const arm = shooter.leftForearm;
+  const sx = arm.position.x + Math.cos(angle) * 16;
+  const sy = arm.position.y + Math.sin(angle) * 16;
+  arrows.push(new Arrow(sx, sy, Math.cos(angle) * speed, Math.sin(angle) * speed, isPlayer));
+  playSound('twang', speed / 25);
+}
+
+// Collisions
+Events.on(engine, 'collisionStart', (e) => {
+  for (const pair of e.pairs) {
+    const arrowBody = pair.bodyA.label === 'arrow' ? pair.bodyA : pair.bodyB.label === 'arrow' ? pair.bodyB : null;
+    const otherBody = arrowBody === pair.bodyA ? pair.bodyB : pair.bodyA;
+    if (!arrowBody) continue;
+
+    const arrow = arrowBody.customArrow;
+    if (!arrow || arrow.isStuck) continue;
+
+    const contact = pair.collision.supports[0] || arrowBody.position;
+
+    if (otherBody.isStatic) {
+      arrow.stickInto(otherBody, contact);
+      playSound('hit');
+    } else if (otherBody.customRagdoll) {
+      const ragdoll = otherBody.customRagdoll;
+      if (ragdoll.isPlayer !== arrow.isPlayer && ragdoll.isAlive) {
+        const isHeadshot = otherBody.label === 'head';
+        const damage = isHeadshot ? 100 : 35;
+        ragdoll.health -= damage;
+        playSound(isHeadshot ? 'headshot' : 'hit');
+        arrow.stickInto(otherBody, contact);
+
+        if (arrow.isPlayer) score += isHeadshot ? 150 : 50;
+
+        if (ragdoll.health <= 0) {
+          ragdoll.collapse();
+          if (arrow.isPlayer) score += 200;
+          checkWaveClear();
+        }
+
+        if (ragdoll === player && ragdoll.health <= 0) {
+          document.getElementById('game-over-summary').textContent = `You reached Wave ${wave} with ${score} points!`;
+          document.getElementById('game-over-modal').classList.remove('hidden');
+        }
+
+        updateHUD();
+      }
+    }
+  }
+});
+
+function checkWaveClear() {
+  if (enemies.every(e => e.isCollapsed)) {
+    setTimeout(() => startWave(wave + 1), 1800);
+  }
+}
+
+function updateHUD() {
+  document.getElementById('score-text').textContent = `${score} PTS`;
+  if (player) {
+    const pct = Math.max(0, (player.health / player.maxHealth) * 100);
+    document.getElementById('player-hp-bar').style.width = `${pct}%`;
+    document.getElementById('player-hp-text').textContent = `${Math.max(0, player.health)} / ${player.maxHealth} HP`;
+  }
+}
+
+// Input Handlers
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (1280 / rect.width);
+  const my = (e.clientY - rect.top) * (720 / rect.height);
+  if (player && player.isAlive) {
+    aimAngle = Math.atan2(my - player.leftForearm.position.y, mx - player.leftForearm.position.x);
+    player.updateAim(aimAngle, drawPower);
+  }
+});
+
+canvas.addEventListener('mousedown', () => {
+  if (player && player.isAlive) isDrawing = true;
+});
+
+window.addEventListener('mouseup', () => {
+  if (isDrawing && player && player.isAlive) {
+    const speed = 14 + drawPower * 20;
+    shoot(player, aimAngle, speed, true);
+    drawPower = 0;
+    isDrawing = false;
+    document.getElementById('power-bar').style.width = '0%';
+    player.updateAim(aimAngle, 0);
+  }
+});
+
+// Enemy AI Interval
+setInterval(() => {
+  enemies.forEach(e => {
+    if (e.isAlive && player && player.isAlive) {
+      const dx = player.torso.position.x - e.torso.position.x;
+      const dy = player.torso.position.y - e.torso.position.y;
+      const dist = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy - (dist * 0.25), dx);
+      e.updateAim(angle, 1);
+      setTimeout(() => {
+        if (e.isAlive) {
+          shoot(e, angle + (Math.random() - 0.5) * 0.12, 22, false);
+          e.updateAim(angle, 0);
+        }
+      }, 600);
+    }
+  });
+}, 2600);
+
+/**
+ * ============================================================================
+ * SECTION 6: RENDER LOOP
+ * ============================================================================
+ */
+function render() {
+  Engine.update(engine, 1000 / 60);
+
+  if (isDrawing) {
+    drawPower = Math.min(1.0, drawPower + 0.02);
+    document.getElementById('power-bar').style.width = `${Math.round(drawPower * 100)}%`;
+    if (player) player.updateAim(aimAngle, drawPower);
+  }
+
+  arrows.forEach(a => a.updateAerodynamics());
+
+  // Render Background
+  ctx.fillStyle = '#090d16';
+  ctx.fillRect(0, 0, 1280, 720);
+
+  // Render Platforms
+  ctx.fillStyle = '#1e293b';
+  [ground, playerTower, enemyPlatform].forEach(b => {
+    ctx.fillRect(b.bounds.min.x, b.bounds.min.y, b.bounds.max.x - b.bounds.min.x, b.bounds.max.y - b.bounds.min.y);
+  });
+
+  // Render Ragdolls
+  function drawRagdoll(r, color) {
+    ctx.fillStyle = color;
+    r.composite.bodies.forEach(b => {
+      ctx.save();
+      ctx.translate(b.position.x, b.position.y);
+      ctx.rotate(b.angle);
+      if (b.circleRadius) {
+        ctx.beginPath(); ctx.arc(0, 0, b.circleRadius, 0, Math.PI * 2); ctx.fill();
+      } else {
+        const w = b.bounds.max.x - b.bounds.min.x;
+        const h = b.bounds.max.y - b.bounds.min.y;
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+      }
+      ctx.restore();
+    });
+
+    // Bow
+    if (r.isAlive) {
+      ctx.save();
+      ctx.translate(r.leftForearm.position.x, r.leftForearm.position.y);
+      ctx.rotate(r.aimAngle);
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 24, -Math.PI / 3, Math.PI / 3);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  if (player) drawRagdoll(player, '#10b981');
+  enemies.forEach(e => drawRagdoll(e, '#ef4444'));
+
+  // Render Arrows
+  arrows.forEach(a => {
+    ctx.save();
+    ctx.translate(a.body.position.x, a.body.position.y);
+    ctx.rotate(a.body.angle);
+    ctx.strokeStyle = a.isPlayer ? '#34d399' : '#f87171';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-23, 0); ctx.lineTo(23, 0);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  requestAnimationFrame(render);
+}
+
+document.getElementById('start-btn').onclick = () => {
+  document.getElementById('intro-modal').classList.add('hidden');
+  initGame();
+};
+document.getElementById('play-again-btn').onclick = () => {
+  document.getElementById('game-over-modal').classList.add('hidden');
+  initGame();
+};
+document.getElementById('restart-btn').onclick = initGame;
+
+render();
+</script>
+</body>
+</html>

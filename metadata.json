@@ -1,0 +1,8 @@
+{
+  "name": "Ragdoll Archers",
+  "description": "2D physics-based ragdoll archery battle game with realistic floppy limb physics, destructible hitboxes, waves of archers, and dynamic arrow trajectories.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
